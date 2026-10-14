@@ -1,3 +1,4 @@
+import { ageSince, formatAge } from '../lib/time'
 import { allPeople, type Person } from './content'
 
 export type NotificationKind = 'reply' | 'mention' | 'like' | 'repost' | 'follow'
@@ -15,6 +16,8 @@ export type Notification = {
   /** What they wrote, for replies and mentions. */
   text?: string
   minutesAgo: number
+  /** When it happened, for ones created while using the app — so "now" ages properly. */
+  at?: number
   read: boolean
 }
 
@@ -61,15 +64,11 @@ export function addReaction(list: Notification[], kind: 'like' | 'repost', actor
       actors: [actor, ...existing.actors.filter((a) => a.handle !== actor.handle)],
       count: existing.count + 1,
       minutesAgo: 0,
+      at: Date.now(),
     }
     return [merged, ...list.filter((n) => n.id !== existing.id)]
   }
-  return [{ id: `n-${Date.now()}`, kind, actors: [actor], count: 1, postId, minutesAgo: 0, read: false }, ...list]
+  return [{ id: `n-${Date.now()}`, kind, actors: [actor], count: 1, postId, minutesAgo: 0, at: Date.now(), read: false }, ...list]
 }
 
-export function age(minutes: number) {
-  if (minutes < 1) return 'now'
-  if (minutes < 60) return `${Math.round(minutes)}m`
-  if (minutes < 60 * 24) return `${Math.round(minutes / 60)}h`
-  return `${Math.round(minutes / 60 / 24)}d`
-}
+export const notificationAge = (n: Notification) => (n.at ? ageSince(n.at) : formatAge(n.minutesAgo))

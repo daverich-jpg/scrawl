@@ -1,6 +1,7 @@
 import type { Post } from '../data/content'
 import { useActions } from '../state/actions'
 import { haptic, play } from '../lib/motion'
+import { ageSince } from '../lib/time'
 import { clampRatio } from './Compose'
 import { Count } from './Count'
 import { Highlight } from './Highlight'
@@ -21,6 +22,7 @@ export function PostCard({ post, highlight = '', variant = 'feed' }: { post: Pos
   const replies = replyCount(post.id)
   const quoted = post.quoteId ? getPost(post.quoteId) : undefined
   // Zero counts render empty (so 0 → 1 can still roll in) — an empty icon reads as "be the first".
+  const age = post.createdAt ? ageSince(post.createdAt) : post.age
   const hideZero = (n: number) => (n > 0 ? String(n) : '')
 
   return (
@@ -46,11 +48,11 @@ export function PostCard({ post, highlight = '', variant = 'feed' }: { post: Pos
                 @<Highlight text={author.handle} term={highlight} /> ·{' '}
                 {opensThread ? (
                   // The keyboard and screen-reader way into the thread (X/Threads convention).
-                  <button type="button" className="age-link" aria-label={`${post.age} — open conversation`} onClick={() => openThread(post)}>
-                    {post.age}
+                  <button type="button" className="age-link" aria-label={`${age} — open conversation`} onClick={() => openThread(post)}>
+                    {age}
                   </button>
                 ) : (
-                  post.age
+                  age
                 )}
               </span>
             </p>

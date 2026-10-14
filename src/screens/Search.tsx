@@ -6,6 +6,7 @@ import { PostCard } from '../components/PostCard'
 import { Toast, type ToastState } from '../components/Toast'
 import { discovery, initialRecents, type Post } from '../data/content'
 import { match, request, suggest, type SearchError } from '../data/search'
+import { readJSON, writeJSON } from '../lib/storage'
 import { useActions } from '../state/actions'
 
 type View = 'landing' | 'loading' | 'results' | 'error'
@@ -21,7 +22,9 @@ export function Search({ posts }: { posts: Post[] }) {
   const [view, setView] = useState<View>('landing')
   const [error, setError] = useState<SearchError>('failed')
   const [filter, setFilter] = useState<Filter>('all')
-  const [recents, setRecents] = useState(initialRecents)
+  // Recent searches are saved on this device, like everything else.
+  const [recents, setRecents] = useState(() => readJSON<string[]>('recents') ?? initialRecents)
+  useEffect(() => void writeJSON('recents', recents), [recents])
   const [toast, setToast] = useState<ToastState>(null)
   const input = useRef<HTMLInputElement>(null)
   const requestId = useRef(0)

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Header } from '../components/Chrome'
 import { Icon, type IconName } from '../components/Icon'
 import type { Post } from '../data/content'
-import { age, type Notification } from '../data/notifications'
+import { notificationAge, type Notification } from '../data/notifications'
 import { useActions } from '../state/actions'
 
 type Filter = 'all' | 'replies'
@@ -153,7 +153,7 @@ function NotificationRow({
           {others > 0 && ` and ${others} ${others === 1 ? 'other' : 'others'}`} {verb(n)}
           <span className="notif-time">
             {' · '}
-            {age(n.minutesAgo)}
+            {notificationAge(n)}
           </span>
         </span>
         {n.text && <span className="notif-quote">{n.text}</span>}

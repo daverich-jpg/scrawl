@@ -961,6 +961,21 @@ button.quote-card:active { background: var(--accent-soft); }
 
 .link-input { color: var(--text-muted); text-overflow: ellipsis; }
 
+/* ---------- Prototype note (profile) ---------- */
+
+.prototype-note {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px dashed var(--line);
+}
+.prototype-note h2 { font-size: 14px; font-weight: 700; color: var(--text); }
+.reset-button { color: var(--danger); }
+
 /* ---------- Form fields ---------- */
 
 .edit-form { display: flex; flex-direction: column; gap: 20px; }

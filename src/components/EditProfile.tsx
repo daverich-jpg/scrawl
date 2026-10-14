@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import type { Person } from '../data/content'
+import { downscale } from '../lib/images'
+import { putPhoto } from '../lib/storage'
 import { ActionSheet, useVisualViewport } from './Compose'
 
 const MAX_NAME = 50
@@ -36,18 +38,20 @@ export function EditProfile({ profile, onClose, onSave }: { profile: Person; onC
 
   const requestClose = () => (changed ? setConfirming(true) : onClose())
 
+  const [photoRef, setPhotoRef] = useState(profile.avatarRef)
+
   const pickPhoto = async (file: File | undefined) => {
     if (!file) return
-    const src = URL.createObjectURL(file)
-    const img = new Image()
-    img.src = src
     try {
-      await img.decode()
+      // Avatars never show bigger than 72px; 512px keeps them crisp on any screen.
+      const { blob } = await downscale(file, 512)
+      const ref = crypto.randomUUID()
+      const saved = await putPhoto(ref, blob)
       if (avatar !== profile.avatar) URL.revokeObjectURL(avatar)
-      setAvatar(src)
+      setAvatar(URL.createObjectURL(blob))
+      setPhotoRef(saved ? ref : undefined)
       setPhotoError('')
     } catch {
-      URL.revokeObjectURL(src)
       setPhotoError('Couldn’t open that file. Try a JPEG or PNG.')
     }
   }
@@ -55,7 +59,7 @@ export function EditProfile({ profile, onClose, onSave }: { profile: Person; onC
   const save = () => {
     if (!canSave) return
     saved.current = true
-    onSave({ ...profile, name: trimmedName, bio: bio.trim(), avatar })
+    onSave({ ...profile, name: trimmedName, bio: bio.trim(), avatar, avatarRef: photoRef })
   }
 
   return (

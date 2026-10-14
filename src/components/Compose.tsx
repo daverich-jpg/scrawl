@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState, type RefObject } from 'react'
 import type { Person, Post, PostImage } from '../data/content'
+import { downscale } from '../lib/images'
+import { putPhoto } from '../lib/storage'
 import { Icon } from './Icon'
 import { QuoteCard } from './PostCard'
 
@@ -351,15 +353,18 @@ function AltEditor({ image, onCancel, onSave }: { image: Draft; onCancel: () => 
   )
 }
 
+/**
+ * Shrinks the photo, keeps it in on-device storage (so it survives a refresh once posted),
+ * and hands back a preview. Abandoned drafts' photos are cleaned up on the next launch.
+ */
 async function load(file: File): Promise<Draft | null> {
-  const src = URL.createObjectURL(file)
-  const img = new Image()
-  img.src = src
   try {
-    await img.decode()
-    return { id: crypto.randomUUID(), src, alt: '', width: img.naturalWidth, height: img.naturalHeight }
+    const { blob, width, height } = await downscale(file)
+    const ref = crypto.randomUUID()
+    const saved = await putPhoto(ref, blob)
+    // If storage is unavailable (private window), the photo still posts — it just won't survive a refresh.
+    return { id: ref, ref: saved ? ref : undefined, src: URL.createObjectURL(blob), alt: '', width, height }
   } catch {
-    URL.revokeObjectURL(src)
     return null
   }
 }

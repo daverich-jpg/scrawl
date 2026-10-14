@@ -12,6 +12,7 @@ export function Profile({
   onToggleFollow,
   onEdit,
   onCompose,
+  onReset,
   onBack,
 }: {
   person: Person
@@ -23,6 +24,8 @@ export function Profile({
   onToggleFollow: () => void
   onEdit: (trigger: HTMLElement) => void
   onCompose: () => void
+  /** Your own profile only: wipe this device's data and restore the samples. */
+  onReset?: (trigger: HTMLElement) => void
   onBack?: () => void
 }) {
   return (
@@ -87,6 +90,16 @@ export function Profile({
             </div>
           )}
         </section>
+
+        {isMe && onReset && (
+          <section className="prototype-note" aria-labelledby="prototype-heading">
+            <h2 id="prototype-heading">This is a prototype</h2>
+            <p className="supporting supporting-small">Your posts and changes are saved on this device only.</p>
+            <button type="button" className="text-button reset-button" aria-haspopup="dialog" onClick={(e) => onReset(e.currentTarget)}>
+              Reset demo
+            </button>
+          </section>
+        )}
       </main>
     </div>
   )

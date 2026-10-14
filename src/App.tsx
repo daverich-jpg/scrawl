@@ -7,10 +7,12 @@ import { LinkDialog } from './components/LinkDialog'
 import { Menu } from './components/Menu'
 import { toggleLike, toggleRepost } from './components/PostCard'
 import { Toast, type ToastState } from './components/Toast'
-import { archive, baseFollowers, baseFollowing, feed, me, seedReplies, type Person, type Post } from './data/content'
-import { addReaction, demoLiker, initialNotifications } from './data/notifications'
+import { baseFollowers, baseFollowing, type Person, type Post } from './data/content'
+import { addReaction, demoLiker } from './data/notifications'
 import { collapseOut, exitOverlay, expandIn, haptic, play } from './lib/motion'
+import { save, type AppData } from './lib/persist'
 import { parsePostLink, postUrl, sharePost } from './lib/share'
+import { clearAll } from './lib/storage'
 import { ActionsContext, type Actions } from './state/actions'
 import { Home, type FocusPost } from './screens/Home'
 import { Notifications } from './screens/Notifications'
@@ -24,14 +26,17 @@ const DEMO_REACTION_MS = 6000
 /** Screens pushed on top of the current tab. The tab stays mounted underneath, so Back keeps its state. */
 type Route = { kind: 'profile'; person: Person } | { kind: 'thread'; postId: string }
 
-export default function App() {
+/** How long to wait after the last change before saving — a burst of likes is one write. */
+const SAVE_DELAY_MS = 250
+
+export default function App({ initial }: { initial: AppData }) {
   const [tab, setTab] = useState<Tab>('home')
-  const [profile, setProfile] = useState<Person>(me)
+  const [profile, setProfile] = useState<Person>(initial.profile)
   // One source of truth, so a like anywhere shows up everywhere. Replies live here too (they have a parentId).
-  const [posts, setPosts] = useState([...feed, ...archive, ...seedReplies])
-  const [feedIds, setFeedIds] = useState(() => feed.map((p) => p.id))
-  const [notifications, setNotifications] = useState(initialNotifications)
-  const [following, setFollowing] = useState<Set<string>>(() => new Set())
+  const [posts, setPosts] = useState(initial.posts)
+  const [feedIds, setFeedIds] = useState(initial.feedIds)
+  const [notifications, setNotifications] = useState(initial.notifications)
+  const [following, setFollowing] = useState<Set<string>>(() => new Set(initial.following))
   // A shared link (#/post/<id>[/<replyId>]) opens straight into that thread.
   const [stack, setStack] = useState<Route[]>(() => {
     const link = parsePostLink(location.hash)
@@ -55,6 +60,31 @@ export default function App() {
   const timers = useRef<number[]>([])
 
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
+
+  // Save to this device shortly after anything changes. If storage is full or blocked,
+  // say so once — quietly losing someone's posts would be worse.
+  const warnedSaveFailure = useRef(false)
+  const resetting = useRef(false)
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      if (resetting.current) return // don't write the old data back mid-reset
+      const ok = save({ posts, feedIds, notifications, following: [...following], profile })
+      if (!ok && !warnedSaveFailure.current) {
+        warnedSaveFailure.current = true
+        setToast({ id: Date.now(), message: 'Couldn’t save on this device — changes will be lost on refresh' })
+      }
+    }, SAVE_DELAY_MS)
+    return () => clearTimeout(t)
+  }, [posts, feedIds, notifications, following, profile])
+
+  /** Wipes this device's Scrawl data and starts over from the sample content. */
+  const resetDemo = async () => {
+    resetting.current = true
+    timers.current.forEach(clearTimeout)
+    await clearAll()
+    location.replace(location.pathname + location.search)
+  }
+  const [confirmingReset, setConfirmingReset] = useState(false)
 
   // Consume the link once it's opened, so Back and refresh behave normally; also catch links opened while the app is up.
   useEffect(() => {
@@ -300,7 +330,8 @@ export default function App() {
     .map((p, i) => ({ p, i, at: p.repostedAt ?? p.createdAt ?? 0 }))
     .sort((a, b) => b.at - a.at || a.i - b.i)
     .map(({ p }) => p)
-  const overlayOpen = composing !== null || editing || postMenu !== null || repostMenu !== null || linkFallback !== null
+  const overlayOpen =
+    composing !== null || editing || postMenu !== null || repostMenu !== null || linkFallback !== null || confirmingReset
 
   return (
     <ActionsContext.Provider value={actions}>
@@ -335,6 +366,10 @@ export default function App() {
                   setEditing(true)
                 }}
                 onCompose={() => openCompose()}
+                onReset={(trigger) => {
+                  rememberFocus(trigger)
+                  setConfirmingReset(true)
+                }}
               />
             )}
           </div>
@@ -405,6 +440,14 @@ export default function App() {
               },
             ]}
             onCancel={() => closeOverlay(() => setPostMenu(null))}
+          />
+        )}
+        {confirmingReset && (
+          <Menu
+            title="Reset the demo?"
+            note="Everything you’ve posted, liked and changed on this device will be erased, and the sample content restored."
+            options={[{ label: 'Reset demo', danger: true, onSelect: () => void resetDemo() }]}
+            onCancel={() => closeOverlay(() => setConfirmingReset(false))}
           />
         )}
         {linkFallback && (

@@ -5,9 +5,23 @@ import sam from '../assets/avatars/sam.png'
 import noah from '../assets/avatars/noah.png'
 import meAvatar from '../assets/avatars/me.png'
 
-export type Person = { name: string; handle: string; avatar: string; bio: string }
+export type Person = {
+  name: string
+  handle: string
+  avatar: string
+  bio: string
+  /** Set when the photo is one you picked: its key in on-device photo storage. */
+  avatarRef?: string
+}
 
-export type PostImage = { src: string; alt: string; width: number; height: number }
+export type PostImage = {
+  src: string
+  alt: string
+  width: number
+  height: number
+  /** Key in on-device photo storage; `src` is a temporary URL rebuilt from it on load. */
+  ref?: string
+}
 
 export type Post = {
   id: string
