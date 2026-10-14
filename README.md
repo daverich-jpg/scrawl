@@ -14,7 +14,6 @@ Add `?motion=full` to preview the animations if your OS has Reduce Motion turned
 ## What's in it
 
 - **Onboarding** — a welcome screen, then name, handle (checked live) and an optional photo; a first-post nudge on Home
-
 - **Home** — feed with a brand header that collapses as you scroll
 - **Search** — recent and suggested searches, filters, highlighted matches, empty / error / loading states
 - **Compose** — text (280 chars) and up to 4 photos from the device, with alt text
