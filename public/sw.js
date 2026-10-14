@@ -1,7 +1,7 @@
 // Scrawl service worker: installable + opens offline.
 // Pages are network-first (a fresh deploy always wins when online); hashed assets and fonts are cache-first.
 // All paths are relative to this file, so it works under /scrawl/ on GitHub Pages.
-const CACHE = 'scrawl-v1'
+const CACHE = 'scrawl-v2'
 const ROOT = new URL('./', self.location).href
 const SHELL = ['./', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './favicon.png'].map(
   (p) => new URL(p, ROOT).href,
@@ -12,10 +12,12 @@ self.addEventListener('install', (e) => {
   e.waitUntil(
     (async () => {
       const c = await caches.open(CACHE)
-      await c.addAll(SHELL)
+      // `reload` skips the browser's HTTP cache, so a fresh deploy is never precached from a stale copy.
+      const fresh = (url) => new Request(url, { cache: 'reload' })
+      await c.addAll(SHELL.map(fresh))
       const html = await (await c.match(ROOT)).text()
       const assets = [...html.matchAll(/(?:src|href)="(\.\/assets\/[^"]+)"/g)].map((m) => new URL(m[1], ROOT).href)
-      await c.addAll(assets)
+      await c.addAll(assets.map(fresh))
       await self.skipWaiting()
     })(),
   )
