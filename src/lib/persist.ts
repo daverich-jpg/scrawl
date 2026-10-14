@@ -1,4 +1,5 @@
 import { allPeople, archive, feed, me, seedReplies, type Person, type Post, type PostImage } from '../data/content'
+import { initialAvatar } from './avatar'
 import { initialNotifications, type Notification } from '../data/notifications'
 import { getPhoto, prunePhotos, readJSON, writeJSON } from './storage'
 
@@ -9,10 +10,12 @@ export type AppData = {
   notifications: Notification[]
   following: string[]
   profile: Person
+  /** False until someone has been through the welcome flow on this device. */
+  onboarded: boolean
 }
 
 /** Bump when the stored shape changes; older saves are ignored rather than half-loaded. */
-const VERSION = 1
+const VERSION = 2
 const KEY = 'state'
 
 /*
@@ -22,7 +25,7 @@ const KEY = 'state'
 type StoredImage = Omit<PostImage, 'src'>
 type StoredPost = Omit<Post, 'author' | 'images'> & { author: string; images?: StoredImage[] }
 type StoredNotification = Omit<Notification, 'actors'> & { actors: string[] }
-type StoredProfile = { name: string; bio: string; avatarRef?: string }
+type StoredProfile = { name: string; handle: string; bio: string; avatarRef?: string }
 type Stored = {
   version: number
   posts: StoredPost[]
@@ -30,15 +33,27 @@ type Stored = {
   notifications: StoredNotification[]
   following: string[]
   profile: StoredProfile
+  onboarded: boolean
 }
 
+/**
+ * A first run: everyone else's sample content, but nothing pretending to be yours —
+ * no posts you didn't write, no replies or mentions to them. One follow, so
+ * Notifications isn't empty before you've posted.
+ */
 export function seedData(): AppData {
+  const yours = (p: Post) => p.author.handle === me.handle
+  const mentionsYou = (p: Post) => p.body.includes(`@${me.handle}`)
+  const posts = [...feed, ...archive, ...seedReplies].filter((p) => !yours(p) && !mentionsYou(p))
+  const kept = new Set(posts.map((p) => p.id))
   return {
-    posts: [...feed, ...archive, ...seedReplies],
-    feedIds: feed.map((p) => p.id),
-    notifications: initialNotifications,
+    // Drop replies whose post was removed above.
+    posts: posts.filter((p) => !p.parentId || kept.has(p.parentId)),
+    feedIds: feed.filter((p) => kept.has(p.id)).map((p) => p.id),
+    notifications: initialNotifications.filter((n) => n.kind === 'follow').map((n) => ({ ...n, read: false })),
     following: [],
-    profile: me,
+    profile: { name: '', handle: '', bio: '', avatar: initialAvatar('') },
+    onboarded: false,
   }
 }
 
@@ -54,7 +69,8 @@ export function save(data: AppData): boolean {
     feedIds: data.feedIds,
     notifications: data.notifications.map(({ actors, ...rest }) => ({ ...rest, actors: actors.map((a) => a.handle) })),
     following: data.following,
-    profile: { name: data.profile.name, bio: data.profile.bio, avatarRef: data.profile.avatarRef },
+    profile: { name: data.profile.name, handle: data.profile.handle, bio: data.profile.bio, avatarRef: data.profile.avatarRef },
+    onboarded: data.onboarded,
   }
   return writeJSON(KEY, stored)
 }
@@ -76,10 +92,10 @@ export async function load(): Promise<AppData> {
 
     const avatar = stored.profile.avatarRef ? await urlFor(stored.profile.avatarRef) : undefined
     const profile: Person = {
-      ...me,
       name: stored.profile.name,
+      handle: stored.profile.handle,
       bio: stored.profile.bio,
-      avatar: avatar ?? me.avatar,
+      avatar: avatar ?? initialAvatar(stored.profile.name),
       avatarRef: avatar ? stored.profile.avatarRef : undefined,
     }
     const people = new Map([...allPeople, profile].map((p) => [p.handle, p]))
@@ -105,7 +121,7 @@ export async function load(): Promise<AppData> {
     // Tidy up photos that nothing refers to any more (deleted posts, abandoned drafts).
     void prunePhotos(new Set(urls.keys()))
 
-    return { posts, feedIds: stored.feedIds, notifications, following: stored.following, profile }
+    return { posts, feedIds: stored.feedIds, notifications, following: stored.following, profile, onboarded: stored.onboarded }
   } catch {
     // A corrupt save shouldn't lock anyone out of the app.
     return seedData()

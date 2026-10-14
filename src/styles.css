@@ -961,6 +961,55 @@ button.quote-card:active { background: var(--accent-soft); }
 
 .link-input { color: var(--text-muted); text-overflow: ellipsis; }
 
+/* ---------- Onboarding ---------- */
+
+.onboarding {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+}
+.onboarding-welcome { justify-content: space-between; padding: 0 var(--gutter) calc(32px + env(safe-area-inset-bottom)); }
+.welcome-mark { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+.welcome-wordmark { font-family: var(--font-brand); font-weight: 700; font-size: 120px; line-height: 0.9; color: var(--text); }
+.welcome-scrawl { width: 180px; height: auto; margin: 4px 0 28px 6px; }
+.welcome-line { font-size: 22px; font-weight: 700; line-height: 1.3; color: var(--text); }
+.welcome-sub { margin-top: 8px; font-size: 16px; line-height: 1.45; color: var(--text-muted); }
+.onboarding-actions { display: flex; flex-direction: column; gap: 12px; }
+.onboarding-cta { width: 100%; height: 52px; font-size: 16px; border-radius: 16px; }
+.onboarding-cta[aria-disabled='true'] { background: var(--accent-soft); color: var(--text-muted); }
+.onboarding-note { text-align: center; }
+
+.onboarding-form { flex: 1; display: flex; flex-direction: column; gap: 20px; padding: 8px var(--gutter) 0; }
+.onboarding-form .onboarding-actions { margin-top: auto; padding-top: 12px; }
+.onboarding-intro h1 { font-size: 26px; font-weight: 700; line-height: 1.2; color: var(--text); margin-bottom: 6px; }
+.onboarding-photo { display: flex; align-items: center; gap: 16px; }
+.onboarding-photo .field-error { flex-basis: 100%; }
+.optional { color: var(--text-muted); font-weight: 400; }
+
+.handle-input { position: relative; display: flex; align-items: center; }
+.handle-input > span { position: absolute; left: 14px; color: var(--text-muted); font-size: 16px; pointer-events: none; }
+.handle-input .field-input { padding-left: 30px; }
+.handle-input.is-invalid .field-input { border-color: var(--danger); }
+.handle-status { min-height: 18px; font-size: 13px; line-height: 1.4; }
+.handle-status.is-ok { color: var(--text-muted); }
+.handle-status.is-error { color: var(--danger); }
+
+.first-post-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.first-post-card h2 { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.first-post-actions { display: flex; align-items: center; gap: 16px; }
+.first-post-actions .button-primary { padding: 0 24px; }
+
 /* ---------- Prototype note (profile) ---------- */
 
 .prototype-note {

@@ -7,9 +7,10 @@ import { LinkDialog } from './components/LinkDialog'
 import { Menu } from './components/Menu'
 import { toggleLike, toggleRepost } from './components/PostCard'
 import { Toast, type ToastState } from './components/Toast'
-import { baseFollowers, baseFollowing, type Person, type Post } from './data/content'
+import { allPeople, baseFollowers, baseFollowing, type Person, type Post } from './data/content'
 import { addReaction, demoLiker } from './data/notifications'
 import { collapseOut, exitOverlay, expandIn, haptic, play } from './lib/motion'
+import { initialAvatar } from './lib/avatar'
 import { save, type AppData } from './lib/persist'
 import { parsePostLink, postUrl, sharePost } from './lib/share'
 import { clearAll } from './lib/storage'
@@ -17,11 +18,14 @@ import { ActionsContext, type Actions } from './state/actions'
 import { Home, type FocusPost } from './screens/Home'
 import { Notifications } from './screens/Notifications'
 import { Profile } from './screens/Profile'
+import { Onboarding } from './screens/Onboarding'
 import { Search } from './screens/Search'
 import { Thread } from './screens/Thread'
 
 /** How long after you post before the demo "like" arrives. */
 const DEMO_REACTION_MS = 6000
+/** After your very first post, a reply follows — so the notifications loop shows up when it's relevant. */
+const FIRST_REPLY_MS = 12000
 
 /** Screens pushed on top of the current tab. The tab stays mounted underneath, so Back keeps its state. */
 type Route = { kind: 'profile'; person: Person } | { kind: 'thread'; postId: string }
@@ -32,6 +36,7 @@ const SAVE_DELAY_MS = 250
 export default function App({ initial }: { initial: AppData }) {
   const [tab, setTab] = useState<Tab>('home')
   const [profile, setProfile] = useState<Person>(initial.profile)
+  const [onboarded, setOnboarded] = useState(initial.onboarded)
   // One source of truth, so a like anywhere shows up everywhere. Replies live here too (they have a parentId).
   const [posts, setPosts] = useState(initial.posts)
   const [feedIds, setFeedIds] = useState(initial.feedIds)
@@ -68,14 +73,14 @@ export default function App({ initial }: { initial: AppData }) {
   useEffect(() => {
     const t = window.setTimeout(() => {
       if (resetting.current) return // don't write the old data back mid-reset
-      const ok = save({ posts, feedIds, notifications, following: [...following], profile })
+      const ok = save({ posts, feedIds, notifications, following: [...following], profile, onboarded })
       if (!ok && !warnedSaveFailure.current) {
         warnedSaveFailure.current = true
         setToast({ id: Date.now(), message: 'Couldn’t save on this device — changes will be lost on refresh' })
       }
     }, SAVE_DELAY_MS)
     return () => clearTimeout(t)
-  }, [posts, feedIds, notifications, following, profile])
+  }, [posts, feedIds, notifications, following, profile, onboarded])
 
   /** Wipes this device's Scrawl data and starts over from the sample content. */
   const resetDemo = async () => {
@@ -211,6 +216,43 @@ export default function App({ initial }: { initial: AppData }) {
         setPosts((p) => p.map((x) => (x.id === post.id ? { ...x, likes: x.likes + 1 } : x)))
       }, DEMO_REACTION_MS),
     )
+
+    const isFirstPost = !posts.some((p) => !p.parentId && p.author.handle === profile.handle)
+    if (isFirstPost) {
+      const riley = allPeople.find((p) => p.handle === 'rileyc')!
+      timers.current.push(
+        window.setTimeout(() => {
+          const reply: Post = {
+            id: `r-${Date.now()}`,
+            parentId: post.id,
+            author: riley,
+            age: 'now',
+            createdAt: Date.now(),
+            body: 'Glad you’re here. This made me feel a little less alone today.',
+            likes: 0,
+            reposts: 0,
+            shares: 0,
+          }
+          // Only if the post still exists — it may have been deleted in the meantime.
+          setPosts((p) => (p.some((x) => x.id === post.id) ? [...p, reply] : p))
+          setNotifications((list) => [
+            {
+              id: `n-${Date.now()}`,
+              kind: 'reply',
+              actors: [riley],
+              count: 1,
+              postId: post.id,
+              replyId: reply.id,
+              text: reply.body,
+              minutesAgo: 0,
+              at: Date.now(),
+              read: false,
+            },
+            ...list,
+          ])
+        }, FIRST_REPLY_MS),
+      )
+    }
   }
 
   /** The post folds away and the list closes over it; Undo opens it back into the same place. */
@@ -240,7 +282,9 @@ export default function App({ initial }: { initial: AppData }) {
     })
   }
 
-  const saveProfile = (next: Person) => {
+  const saveProfile = (edited: Person) => {
+    // Without a chosen photo, the initial avatar follows the name.
+    const next = edited.avatarRef ? edited : { ...edited, avatar: initialAvatar(edited.name) }
     setProfile(next)
     // Your existing posts and replies pick up the new name, photo and bio too.
     setPosts((p) => p.map((x) => (x.author.handle === next.handle ? { ...x, author: next } : x)))
@@ -322,7 +366,11 @@ export default function App({ initial }: { initial: AppData }) {
   const dismissToast = useCallback(() => setToast(null), [])
   const topLevel = posts.filter((p) => !p.parentId)
   const unread = notifications.filter((n) => !n.read).length
-  const followersOf = (handle: string) => (baseFollowers[handle] ?? 0) + (following.has(handle) ? 1 : 0)
+  const followersOf = (handle: string) =>
+    handle === profile.handle
+      ? // A new account's followers are the people who followed it here.
+        notifications.filter((n) => n.kind === 'follow').reduce((sum, n) => sum + n.count, 0)
+      : (baseFollowers[handle] ?? 0) + (following.has(handle) ? 1 : 0)
   const postsBy = (handle: string) => topLevel.filter((p) => p.author.handle === handle)
   /** Your profile: your posts plus what you've reposted, newest activity first. */
   const myProfilePosts = topLevel
@@ -330,81 +378,104 @@ export default function App({ initial }: { initial: AppData }) {
     .map((p, i) => ({ p, i, at: p.repostedAt ?? p.createdAt ?? 0 }))
     .sort((a, b) => b.at - a.at || a.i - b.i)
     .map(({ p }) => p)
-  const overlayOpen =
-    composing !== null || editing || postMenu !== null || repostMenu !== null || linkFallback !== null || confirmingReset
+  const overlayOpen = composing !== null || editing || postMenu !== null || repostMenu !== null || linkFallback !== null || confirmingReset
 
   return (
     <ActionsContext.Provider value={actions}>
       <div className="phone">
-        {/* Everything behind an overlay is inert: no stray taps, no focus escaping. */}
-        <div className="app-body" inert={overlayOpen}>
-          <StatusBar />
-          <div className={`screen ${transition ? `enter-${transition}` : ''}`} key={`tab-${tab}`} hidden={top !== undefined}>
-            {tab === 'home' && <Home posts={feedIds.flatMap((id) => byId.get(id) ?? [])} focus={focus} />}
-            {tab === 'search' && <Search posts={topLevel} />}
-            {tab === 'notifications' && (
-              <Notifications
-                notifications={notifications}
-                posts={posts}
-                following={following}
-                onMarkRead={markRead}
-                onOpenPost={openFromNotification}
-                onToggleFollow={toggleFollow}
-              />
-            )}
-            {tab === 'profile' && (
-              <Profile
-                person={profile}
-                isMe
-                posts={myProfilePosts}
-                followers={followersOf(profile.handle)}
-                following={following.size}
-                isFollowing={false}
-                onToggleFollow={() => {}}
-                onEdit={(trigger) => {
-                  rememberFocus(trigger)
-                  setEditing(true)
-                }}
-                onCompose={() => openCompose()}
-                onReset={(trigger) => {
-                  rememberFocus(trigger)
-                  setConfirmingReset(true)
-                }}
-              />
-            )}
-          </div>
+        {!onboarded && <StatusBar />}
+        {!onboarded && (
+          <Onboarding
+            initialName={profile.name}
+            onDone={(p) => {
+              setProfile(p)
+              setOnboarded(true)
+              setTransition('tab')
+              setToast({ id: Date.now(), message: `Welcome, ${p.name.split(' ')[0]}` })
+            }}
+          />
+        )}
+        {onboarded && (
+          <>
+            {/* Everything behind an overlay is inert: no stray taps, no focus escaping. */}
+            <div className="app-body" inert={overlayOpen}>
+              <StatusBar />
+              <div className={`screen ${transition ? `enter-${transition}` : ''}`} key={`tab-${tab}`} hidden={top !== undefined}>
+                {tab === 'home' && (
+                  <Home
+                    posts={feedIds.flatMap((id) => byId.get(id) ?? [])}
+                    focus={focus}
+                    // The first-post nudge stays until you've posted something (or dismissed it).
+                    showFirstPostCard={!posts.some((p) => !p.parentId && p.author.handle === profile.handle)}
+                    onCompose={(trigger) => openCompose({}, trigger)}
+                  />
+                )}
+                {tab === 'search' && <Search posts={topLevel} />}
+                {tab === 'notifications' && (
+                  <Notifications
+                    notifications={notifications}
+                    posts={posts}
+                    following={following}
+                    onMarkRead={markRead}
+                    onOpenPost={openFromNotification}
+                    onToggleFollow={toggleFollow}
+                  />
+                )}
+                {tab === 'profile' && (
+                  <Profile
+                    person={profile}
+                    isMe
+                    posts={myProfilePosts}
+                    followers={followersOf(profile.handle)}
+                    following={following.size}
+                    isFollowing={false}
+                    onToggleFollow={() => {}}
+                    onEdit={(trigger) => {
+                      rememberFocus(trigger)
+                      setEditing(true)
+                    }}
+                    onCompose={() => openCompose()}
+                    onReset={(trigger) => {
+                      rememberFocus(trigger)
+                      setConfirmingReset(true)
+                    }}
+                  />
+                )}
+              </div>
 
-          {top?.kind === 'profile' && (
-            <div className={`screen ${transition ? `enter-${transition}` : ''}`} key={`profile-${top.person.handle}-${stack.length}`}>
-              <Profile
-                person={top.person}
-                isMe={false}
-                posts={postsBy(top.person.handle)}
-                followers={followersOf(top.person.handle)}
-                following={baseFollowing[top.person.handle] ?? 0}
-                isFollowing={following.has(top.person.handle)}
-                onToggleFollow={() => toggleFollow(top.person.handle)}
-                onEdit={() => {}}
-                onCompose={() => openCompose()}
-                onBack={pop}
-              />
-            </div>
-          )}
-          {top?.kind === 'thread' && (
-            <div className={`screen ${transition ? `enter-${transition}` : ''}`} key={`thread-${top.postId}-${stack.length}`}>
-              <Thread
-                post={byId.get(top.postId)}
-                replies={posts.filter((p) => p.parentId === top.postId)}
-                me={profile}
-                focus={threadFocus}
-                onBack={pop}
-              />
-            </div>
-          )}
+              {top?.kind === 'profile' && (
+                <div className={`screen ${transition ? `enter-${transition}` : ''}`} key={`profile-${top.person.handle}-${stack.length}`}>
+                  <Profile
+                    person={top.person}
+                    isMe={false}
+                    posts={postsBy(top.person.handle)}
+                    followers={followersOf(top.person.handle)}
+                    following={baseFollowing[top.person.handle] ?? 0}
+                    isFollowing={following.has(top.person.handle)}
+                    onToggleFollow={() => toggleFollow(top.person.handle)}
+                    onEdit={() => {}}
+                    onCompose={() => openCompose()}
+                    onBack={pop}
+                  />
+                </div>
+              )}
+              {top?.kind === 'thread' && (
+                <div className={`screen ${transition ? `enter-${transition}` : ''}`} key={`thread-${top.postId}-${stack.length}`}>
+                  <Thread
+                    post={byId.get(top.postId)}
+                    replies={posts.filter((p) => p.parentId === top.postId)}
+                    me={profile}
+                    focus={threadFocus}
+                    onBack={pop}
+                  />
+                </div>
+              )}
 
-          <Navigation tab={tab} onTab={changeTab} onCompose={() => openCompose()} unread={unread} avatar={profile.avatar} />
-          <Toast toast={toast} onDismiss={dismissToast} />
-        </div>
+              <Navigation tab={tab} onTab={changeTab} onCompose={() => openCompose()} unread={unread} avatar={profile.avatar} />
+              <Toast toast={toast} onDismiss={dismissToast} />
+            </div>
+          </>
+        )}
 
         {composing && (
           <Compose
@@ -445,7 +516,7 @@ export default function App({ initial }: { initial: AppData }) {
         {confirmingReset && (
           <Menu
             title="Reset the demo?"
-            note="Everything you’ve posted, liked and changed on this device will be erased, and the sample content restored."
+            note="Everything you’ve posted, liked and changed on this device will be erased, and Scrawl will start again from the welcome screen."
             options={[{ label: 'Reset demo', danger: true, onSelect: () => void resetDemo() }]}
             onCancel={() => closeOverlay(() => setConfirmingReset(false))}
           />

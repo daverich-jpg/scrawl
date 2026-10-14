@@ -54,6 +54,9 @@ const people = {
 
 export const allPeople: Person[] = Object.values(people)
 
+/** Handles a new user can't take. */
+export const takenHandles = new Set(allPeople.map((p) => p.handle))
+
 /** The signed-in user — placeholder identity for posts written in Compose. */
 export const me: Person = { name: 'David Okpor', handle: 'davido', avatar: meAvatar, bio: 'Writing it down so it stops living in my head.' }
 

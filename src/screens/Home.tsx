@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Header } from '../components/Chrome'
 import { PostCard } from '../components/PostCard'
 import { reducedMotion } from '../lib/motion'
+import { readJSON, writeJSON } from '../lib/storage'
 import type { Post } from '../data/content'
 
 /** Scroll distance over which the 134px brand header collapses to 56px. */
@@ -10,7 +11,18 @@ const COLLAPSE_DISTANCE = 78
 /** A post to bring into view and briefly highlight; `n` changes so the same post can be re-focused. */
 export type FocusPost = { id: string; n: number } | null
 
-export function Home({ posts, focus }: { posts: Post[]; focus: FocusPost }) {
+export function Home({
+  posts,
+  focus,
+  showFirstPostCard,
+  onCompose,
+}: {
+  posts: Post[]
+  focus: FocusPost
+  showFirstPostCard: boolean
+  onCompose: (trigger: HTMLElement) => void
+}) {
+  const [hintDismissed, setHintDismissed] = useState(() => readJSON<boolean>('hint:first-post') ?? false)
   const [progress, setProgress] = useState(0)
   const frame = useRef(0)
   const scroller = useRef<HTMLDivElement>(null)
@@ -37,6 +49,30 @@ export function Home({ posts, focus }: { posts: Post[]; focus: FocusPost }) {
     <div className="scroll" ref={scroller} onScroll={onScroll}>
       <Header variant="brand" title="Scrawl" progress={progress} />
       <main className="feed">
+        {showFirstPostCard && !hintDismissed && (
+          // Teach by doing: one gentle nudge in context, instead of a tour up front.
+          <section className="first-post-card" aria-labelledby="first-post-heading">
+            <div>
+              <h2 id="first-post-heading">Write your first scrawl</h2>
+              <p className="supporting">What’s one honest thing about today?</p>
+            </div>
+            <div className="first-post-actions">
+              <button type="button" className="button-primary" aria-haspopup="dialog" onClick={(e) => onCompose(e.currentTarget)}>
+                Write
+              </button>
+              <button
+                type="button"
+                className="text-button text-button-neutral"
+                onClick={() => {
+                  setHintDismissed(true)
+                  writeJSON('hint:first-post', true)
+                }}
+              >
+                Not now
+              </button>
+            </div>
+          </section>
+        )}
         {posts.map((post) => {
           const focused = post.id === focus?.id
           // Re-keying replays the highlight each time the same post is focused.
